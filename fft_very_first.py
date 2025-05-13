@@ -21,6 +21,8 @@ def load_accelerometer_data(csv_file):
     print(f"Loading data from {csv_file}...")
     df = pd.read_csv(csv_file)
 
+
+
     # Extract acceleration data from new column names 'X', 'Y', 'Z'
     x_milli = df['X'].values  # Changed from 'AxisX', assuming milli-units
     y_milli = df['Y'].values  # Changed from 'AxisY', assuming milli-units
@@ -210,6 +212,18 @@ def main(**kwargs):
 
     # Load data
     df = load_accelerometer_data(input_file)
+
+    # --- ADD THIS DEBUGGING ---
+    print("--- DataFrame Info ---")
+    df.info()
+    print("\n--- NaN counts per column ---")
+    print(df.isnull().sum())
+    print("\n--- First 5 rows of Resultant ---")
+    if 'Resultant' in df.columns:
+        print(df['Resultant'].head())
+    else:
+        print("Resultant column not found yet.")
+    # --- END DEBUGGING ---
 
     if df.empty or 'Resultant' not in df.columns:
         print("Failed to load or process data correctly.")
