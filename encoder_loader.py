@@ -89,7 +89,8 @@ if len(numpy_data) > 0:
             current_encoder_value = 0.0
         else:
             # Increment by 0.68 and take modulus 360
-            current_encoder_value = (current_encoder_value + 0.68) % 360
+            #current_encoder_value = (current_encoder_value + 0.68) % 360
+            current_encoder_value = (current_encoder_value + 5.26) % 360
             numpy_data[i]['Encoder'] = round(current_encoder_value, 5) # Rounded for precision
 
 # Step 5: Print the updated NumPy array (or save it)

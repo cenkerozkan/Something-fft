@@ -194,7 +194,7 @@ def save_axis_fft_results_to_csv(axis_name, freqs, magnitude, peak_freqs, peak_m
 
 def main():
     ensure_output_dir()
-    input_file = input("Enter your CSV file path: ")
+    input_file = "updated_vibration_data.csv"
     if not os.path.exists(input_file): print(f"Error: {input_file} not found!"); return
 
     df = load_accelerometer_data(input_file)

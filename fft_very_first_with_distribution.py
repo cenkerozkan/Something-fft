@@ -5,12 +5,8 @@ from scipy.fft import fft, fftfreq
 from scipy import signal
 import os
 
-"""
-THIS ONE ALSO GIVES THE POLAR PLOT WITH ENCODER DATA
-"""
-
 # Define the output directory
-OUTPUT_DIR = 'fft_and_polar_results'  # Updated output directory name
+OUTPUT_DIR = 'fft_and_polar_results_color'  # Updated output directory name
 
 
 def ensure_output_dir():
@@ -25,26 +21,21 @@ def load_accelerometer_data(csv_file):
     print(f"Loading data from {csv_file}...")
     df = pd.read_csv(csv_file)
 
-    # Ensure critical columns are present
-    required_cols = ['X', 'Y', 'Z', 'Encoder']  # Added 'Encoder' as required
+    required_cols = ['X', 'Y', 'Z', 'Encoder']
     if not all(col in df.columns for col in required_cols):
         print(f"Error: CSV file must contain {', '.join(required_cols)} columns.")
         missing_cols = [col for col in required_cols if col not in df.columns]
         print(f"Missing columns: {', '.join(missing_cols)}")
         return pd.DataFrame()
 
-    # Extract acceleration data
     x_milli = df['X'].values
     y_milli = df['Y'].values
     z_milli = df['Z'].values
-
     conversion_factor = 1e-3
     df['X'] = x_milli * conversion_factor
     df['Y'] = y_milli * conversion_factor
     df['Z'] = z_milli * conversion_factor
-
     print(f"Converted X, Y, Z acceleration data to standard units (factor: {conversion_factor})")
-    # Encoder data is assumed to be in degrees and ready for use or already processed if needed.
     if 'Encoder' in df.columns:
         print(f"Encoder data loaded. Min: {df['Encoder'].min()}, Max: {df['Encoder'].max()}")
     print(f"Loaded {len(df)} samples")
@@ -52,10 +43,7 @@ def load_accelerometer_data(csv_file):
 
 
 def compute_fft(signal_data, sample_rate):
-    """Compute FFT of a signal"""
-    if len(signal_data) == 0:
-        print("Warning: Empty signal data provided to compute_fft.")
-        return np.array([]), np.array([])
+    if len(signal_data) == 0: return np.array([]), np.array([])
     windowed_signal = signal_data * signal.windows.hann(len(signal_data))
     fft_result = fft(windowed_signal)
     freqs = fftfreq(len(signal_data), 1.0 / sample_rate)
@@ -63,21 +51,15 @@ def compute_fft(signal_data, sample_rate):
     positive_indices = freqs >= 0
     freqs = freqs[positive_indices]
     magnitude = magnitude[positive_indices]
-    if len(magnitude) > 1:
-        magnitude[1:] = magnitude[1:] * 2
+    if len(magnitude) > 1: magnitude[1:] = magnitude[1:] * 2
     return freqs, magnitude
 
 
 def find_peak_frequencies(freqs, magnitude, num_peaks=5):
-    """Find the frequencies with highest magnitude"""
     if len(magnitude) <= 1: return np.array([]), np.array([])
-    search_freqs = freqs
-    search_magnitude = magnitude
-    offset = 0
+    search_freqs, search_magnitude, offset = freqs, magnitude, 0
     if freqs[0] == 0 and len(freqs) > 1:
-        search_freqs = freqs[1:]
-        search_magnitude = magnitude[1:]
-        offset = 1
+        search_freqs, search_magnitude, offset = freqs[1:], magnitude[1:], 1
     elif freqs[0] == 0 and len(freqs) == 1:
         return np.array([]), np.array([])
     if len(search_magnitude) == 0: return np.array([]), np.array([])
@@ -91,25 +73,27 @@ def find_peak_frequencies(freqs, magnitude, num_peaks=5):
 def plot_time_domain(df, output_dir, sample_rate_for_time_axis):
     output_file = os.path.join(output_dir, "time_domain_XYZ.png")
     plt.figure(figsize=(12, 9))
+    timestamps = np.arange(len(df)) / sample_rate_for_time_axis  # Default
+    time_source_info = f"index-based time axis with sample rate: {sample_rate_for_time_axis} Hz."
     if 'Timestamp' in df.columns:
         try:
             numeric_timestamps = pd.to_numeric(df['Timestamp'], errors='coerce')
             if not numeric_timestamps.isnull().all():
                 timestamps = (numeric_timestamps - numeric_timestamps.iloc[0]) / 1000.0
-                print("Using 'Timestamp' column for time axis (converted to seconds).")
-            else:
-                raise ValueError("Timestamp column not suitable or all NaNs.")
+                time_source_info = "'Timestamp' column (converted to seconds)."
         except Exception as e:
             print(f"Could not use 'Timestamp' for time axis ({e}), falling back.")
-            timestamps = np.arange(len(df)) / sample_rate_for_time_axis
     elif 'Tick' in df.columns:
-        timestamps = df['Tick'].values / sample_rate_for_time_axis
-    else:
-        timestamps = np.arange(len(df)) / sample_rate_for_time_axis
-    # Plot X, Y, Z (code omitted for brevity, same as before)
+        try:
+            timestamps = pd.to_numeric(df['Tick'], errors='coerce').values / sample_rate_for_time_axis
+            time_source_info = f"'Tick' column with sample rate: {sample_rate_for_time_axis} Hz."
+        except Exception as e:
+            print(f"Could not use 'Tick' for time axis ({e}), falling back to index-based.")
+    print(f"Using {time_source_info} for time domain plot.")
+
     for i, axis in enumerate(['X', 'Y', 'Z']):
         plt.subplot(3, 1, i + 1)
-        plt.plot(timestamps, df[axis], label=f'{axis}-axis')
+        plt.plot(timestamps, df[axis].fillna(0), label=f'{axis}-axis', color=['r', 'g', 'b'][i], alpha=0.7)
         plt.title(f'{axis}-axis Acceleration')
         plt.ylabel('Acceleration (units)')
         plt.grid(True)
@@ -143,37 +127,47 @@ def plot_fft_results(axis_name, freqs, magnitude, peak_freqs, peak_mags, output_
 
 
 def plot_vibration_polar(axis_name, df, output_dir):
-    """Plots vibration for a given axis against encoder angle on a polar chart."""
+    """Plots vibration for a given axis against encoder angle on a polar chart, colored by sample index."""
     if 'Encoder' not in df.columns:
-        print(f"Error: 'Encoder' column not found in DataFrame. Cannot create polar plot for {axis_name}-axis.")
+        print(f"Error: 'Encoder' column not found. Cannot create polar plot for {axis_name}-axis.")
         return
     if df['Encoder'].isnull().all():
-        print(f"Warning: 'Encoder' column contains all NaN values for {axis_name}-axis. Skipping polar plot.")
+        print(f"Warning: 'Encoder' column all NaN for {axis_name}-axis. Skipping polar plot.")
         return
 
-    output_file = os.path.join(output_dir, f"polar_vibration_{axis_name}.png")
-    plt.figure(figsize=(8, 8))
-    ax = plt.subplot(111, projection='polar')
+    output_file = os.path.join(output_dir, f"polar_vibration_color_{axis_name}.png")
+    fig, ax = plt.subplots(figsize=(9, 9), subplot_kw={'projection': 'polar'})
 
-    # Assuming encoder data is in degrees, convert to radians
-    theta = np.deg2rad(df['Encoder'].fillna(0).values)  # Fill NaN with 0 for angle
-    r = df[axis_name].fillna(0).values  # Fill NaN with 0 for vibration magnitude
+    theta = np.deg2rad(df['Encoder'].fillna(0).values)
+    r = df[axis_name].fillna(0).values
 
-    # Scatter plot can be good if data is not perfectly ordered or has multiple rotations
-    # ax.scatter(theta, r, alpha=0.5, s=5) # s is marker size
-    # Line plot can be good if data represents a single, ordered rotation or if you want to see the path
-    ax.plot(theta, r, alpha=0.7, label=f'{axis_name} Vibration')
+    # Use a sequential array for color mapping (e.g., sample index)
+    # This will show the progression of data over "time" (sample sequence)
+    colors = df.index
 
-    ax.set_title(f'{axis_name}-axis Vibration vs. Encoder Angle', va='bottom')
-    ax.legend()
+    # Scatter plot with color based on sample index
+    scatter = ax.scatter(theta, r, c=colors, cmap='viridis', alpha=0.6, s=10)  # s is marker size
+
+    # Add a colorbar
+    cbar = fig.colorbar(scatter, ax=ax, orientation='vertical', pad=0.1)
+    cbar.set_label('Sample Index (Time Progression)')
+
+    ax.set_title(f'{axis_name}-axis Vibration vs. Encoder Angle\n(Color by Sample Index)', va='bottom', pad=20)
+    # ax.legend() # Legend is less useful for scatter with continuous color
+
+    # Optional: Set radial limits if needed, e.g., based on data range
+    # r_min = np.min(r)
+    # r_max = np.max(r)
+    # ax.set_rlim(bottom=min(0, r_min), top=r_max * 1.1) # Ensure 0 is visible or adapt
+
+    plt.tight_layout()  # Adjust layout to make space for colorbar and title
     plt.savefig(output_file, dpi=300)
-    print(f"Polar vibration plot for {axis_name}-axis saved as {output_file}")
+    print(f"Color-coded polar vibration plot for {axis_name}-axis saved as {output_file}")
     plt.show()
     plt.close()
 
 
 def save_axis_fft_results_to_csv(axis_name, freqs, magnitude, peak_freqs, peak_mags, output_dir):
-    # (Code omitted for brevity, same as before)
     if len(freqs) == 0: return
     output_file_all = os.path.join(output_dir, f"fft_all_frequencies_{axis_name}.csv")
     output_file_peaks = os.path.join(output_dir, f"fft_peak_frequencies_{axis_name}.csv")
@@ -193,8 +187,9 @@ def main():
     df = load_accelerometer_data(input_file)
     if df.empty: print("Failed to load or process data. Exiting."); return
 
-    # (DataFrame info and NaN counts - code omitted for brevity, same as before)
+    print("\n--- DataFrame Info ---")
     df.info()
+    print("\n--- NaN counts per column ---")
     print(df.isnull().sum())
 
     processed_file = os.path.join(OUTPUT_DIR, "processed_data_with_encoder.csv")
@@ -202,7 +197,6 @@ def main():
     print(f"Processed data saved to {processed_file}")
 
     sample_rate = 0
-    # (Sample rate determination logic - code omitted for brevity, same as before)
     if 'Timestamp' in df.columns:
         try:
             timestamps_ms = pd.to_numeric(df['Timestamp'], errors='raise')
@@ -217,9 +211,21 @@ def main():
             print(f"\nInferred sample rate: {sample_rate:.2f} Hz.")
         except Exception as e:
             print(f"Could not infer sample rate from 'Timestamp' ({e}).")
+
+    if sample_rate == 0 and 'Tick' in df.columns:  # Added check for Tick column
+        try:
+            # Attempt to use Tick if Timestamp failed or wasn't present
+            # This assumes ticks are regular and sample_rate can be derived or is known
+            # For now, we'll just note if it's present and still rely on manual input if Timestamp fails
+            print(
+                "Tick column found, but sample rate inference from Tick is not fully implemented. Please provide if Timestamp failed.")
+        except Exception as e:
+            print(f"Error processing 'Tick' for sample rate: {e}")
+
     if sample_rate == 0:
         try:
-            manual_sample_rate = float(input("Enter sample rate in Hz (e.g., 2600.0): "))
+            manual_sample_rate = float(
+                input("Could not auto-detect sample rate. Please enter sample rate in Hz (e.g., 2600.0): "))
             if manual_sample_rate <= 0: raise ValueError("Rate must be positive.")
             sample_rate = manual_sample_rate
         except ValueError as e:
@@ -233,10 +239,9 @@ def main():
 
     for axis_name in axes_to_analyze:
         print(f"\n--- Processing Analysis for {axis_name}-axis ---")
-        signal_data = df[axis_name].fillna(0).values  # Fill NaN before FFT
+        signal_data = df[axis_name].fillna(0).values
         if len(signal_data) == 0: print(f"{axis_name}-axis no data. Skipping."); continue
 
-        # FFT Analysis
         freqs, magnitude = compute_fft(signal_data, sample_rate)
         if len(freqs) > 0:
             peak_freqs, peak_mags = find_peak_frequencies(freqs, magnitude, num_peaks=num_peaks_to_find)
@@ -251,8 +256,7 @@ def main():
         else:
             print(f"FFT computation failed or yielded no frequencies for {axis_name}-axis.")
 
-        # Polar Plot with Encoder
-        print(f"\nGenerating polar plot for {axis_name}-axis using Encoder data...")
+        print(f"\nGenerating color-coded polar plot for {axis_name}-axis using Encoder data...")
         plot_vibration_polar(axis_name, df, OUTPUT_DIR)
 
     print(f"\nAll analysis results saved to '{OUTPUT_DIR}/' directory.")
