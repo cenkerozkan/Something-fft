@@ -30,7 +30,7 @@ def load_accelerometer_data(csv_file):
 
     x_milli = df['X'].values
     y_milli = df['Y'].values
-    z_milli = df['Z'].values
+    z_milli = df['Z'].values - 1000
     conversion_factor = 1e-3
     df['X'] = x_milli * conversion_factor
     df['Y'] = y_milli * conversion_factor

@@ -32,7 +32,8 @@ def load_accelerometer_data(csv_file):
     conversion_factor = 1e-3
     df['X_conv'] = df['X'] * conversion_factor
     df['Y_conv'] = df['Y'] * conversion_factor
-    df['Z_conv'] = df['Z'] * conversion_factor
+    df['Z_conv'] = (df['Z'] - 1000) * conversion_factor
+    print(f"ALPERENİN İSTEDİKLERİ:\n------------\n{df["Z_conv"]}")
     print(f"Converted X, Y, Z acceleration data to standard units (factor: {conversion_factor})")
 
     # Calculate Resultant using converted values
